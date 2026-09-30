@@ -1,0 +1,133 @@
+# ==============================================================================
+# DevPulse AI - Continuous Integration (CI) Workflow
+# Validates Backend (Python 3.12 + PostgreSQL), Frontend (Node 20 + Vite),
+# and Docker container builds on every push and pull request.
+# ==============================================================================
+
+name: DevPulse AI CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+# Strictly read-only permissions for repository contents
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------------------------
+  # 1. Backend Validation: Python 3.12, PostgreSQL Service, Smoke Tests
+  # ----------------------------------------------------------------------------
+  backend:
+    name: Backend Validation (Python 3.12 & PostgreSQL)
+    runs-on: ubuntu-latest
+
+    # Ephemeral PostgreSQL 16 container service for genuine relational DB testing
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: devpulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/devpulse
+      APP_ENV: testing
+      DEBUG: "True"
+      PORT: "8000"
+      # Mock values for CI — no real credentials or keys required
+      GITHUB_APP_ID: "5118991"
+      GITHUB_APP_PRIVATE_KEY_PATH: ""
+      GEMINI_API_KEY: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate application imports and startup
+        working-directory: backend
+        run: |
+          python -c "import app.main; print('FastAPI application initialized successfully')"
+
+      - name: Run backend smoke test suite
+        working-directory: backend
+        run: |
+          python -m unittest discover -s tests -v
+
+  # ----------------------------------------------------------------------------
+  # 2. Frontend Validation: Node.js 20, TypeScript, Vite Production Build
+  # ----------------------------------------------------------------------------
+  frontend:
+    name: Frontend Validation (Node.js 20 & Vite Build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Validate TypeScript and build production bundle
+        working-directory: frontend
+        run: npm run build
+
+  # ----------------------------------------------------------------------------
+  # 3. Docker Validation: Compose Syntax, Backend Image, Frontend Image Build
+  # ----------------------------------------------------------------------------
+  docker:
+    name: Docker Validation (Compose & Images)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker Compose configuration
+        run: |
+          mkdir -p backend/secrets
+          docker compose config --quiet
+
+      - name: Build backend Docker image
+        run: docker build -t devpulse-backend:ci ./backend
+
+      - name: Build frontend Docker image
+        run: docker build -t devpulse-frontend:ci ./frontend

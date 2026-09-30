@@ -1,0 +1,117 @@
+# ==============================================================================
+# DevPulse AI - Multi-Container Orchestration (Docker Compose)
+# Services: PostgreSQL Database, FastAPI Backend, React + Nginx Frontend
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL 16 Service (Persistence layer for analytics history and metrics)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: devpulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-devpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-devpulse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - devpulse-net
+
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend Service (Strictly read-only GitHub integration & AI engine)
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: devpulse-backend
+    restart: unless-stopped
+    environment:
+      # Database connection pointing to compose postgres service
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-devpulse}
+      
+      # GitHub App Configuration (Strictly Read-Only access)
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-5118991}
+      GITHUB_APP_PRIVATE_KEY_PATH: /app/secrets/devpulse-ai.private-key.pem
+
+      # Gemini AI Configuration (Backend-only key, never exposed to client)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+
+      # Optional Legacy GitHub OAuth / PAT
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_ACCESS_TOKEN: ${GITHUB_ACCESS_TOKEN:-}
+
+      # Application runtime settings
+      FRONTEND_URL: http://localhost:5173
+      APP_ENV: production
+      DEBUG: "False"
+      PORT: "8000"
+    volumes:
+      # Mount GitHub App private key safely as read-only volume without baking secrets into image
+      - ./backend/secrets:/app/secrets:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - devpulse-net
+
+  # ----------------------------------------------------------------------------
+  # React + Nginx Frontend Service (Production SPA with /api reverse proxy)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: devpulse-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - devpulse-net
+
+# ------------------------------------------------------------------------------
+# Named Persistent Storage
+# ------------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: devpulse_postgres_data
+    driver: local
+
+# ------------------------------------------------------------------------------
+# Isolated Bridge Network
+# ------------------------------------------------------------------------------
+networks:
+  devpulse-net:
+    name: devpulse_network
+    driver: bridge
