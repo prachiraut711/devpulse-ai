@@ -30,6 +30,8 @@ import {
   X,
 } from 'lucide-react'
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavItemKey>(() => {
     const params = new URLSearchParams(window.location.search)
@@ -86,7 +88,7 @@ export default function App() {
   const checkBackendHealth = useCallback(async () => {
     setIsCheckingBackend(true)
     try {
-      const response = await fetch('/api/health')
+      const response = await fetch(`${API_BASE_URL}/api/health`)
       if (response.ok) {
         setBackendOnline(true)
       } else {
@@ -102,7 +104,7 @@ export default function App() {
   // Check GitHub integration status: GET /api/github/status
   const checkGitHubStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/github/status', {
+      const response = await fetch(`${API_BASE_URL}/api/github/status`, {
         credentials: 'include',
       })
       if (response.ok) {
@@ -122,7 +124,7 @@ export default function App() {
     setReposError(null)
 
     try {
-      const response = await fetch('/api/github/repos', {
+      const response = await fetch(`${API_BASE_URL}/api/github/repos`, {
         credentials: 'include',
       })
 
@@ -155,7 +157,7 @@ export default function App() {
       setPrsError(null)
 
       try {
-        let url = `/api/github/pull-requests?state=${encodeURIComponent(stateFilter)}`
+        let url = `${API_BASE_URL}/api/github/pull-requests?state=${encodeURIComponent(stateFilter)}`
         if (repoFilter && repoFilter !== 'all') {
           url += `&repository=${encodeURIComponent(repoFilter)}`
         }
@@ -194,7 +196,7 @@ export default function App() {
       setIssuesError(null)
 
       try {
-        let url = `/api/github/issues?state=${encodeURIComponent(stateFilter)}`
+        let url = `${API_BASE_URL}/api/github/issues?state=${encodeURIComponent(stateFilter)}`
         if (repoFilter && repoFilter !== 'all') {
           url += `&repository=${encodeURIComponent(repoFilter)}`
         }
@@ -233,7 +235,7 @@ export default function App() {
       setWorkflowsError(null)
 
       try {
-        let url = `/api/github/workflow-runs?status=${encodeURIComponent(statusFilter)}`
+        let url = `${API_BASE_URL}/api/github/workflow-runs?status=${encodeURIComponent(statusFilter)}`
         if (repoFilter && repoFilter !== 'all') {
           url += `&repository=${encodeURIComponent(repoFilter)}`
         }
@@ -274,7 +276,7 @@ export default function App() {
     setError(null)
 
     try {
-      const response = await fetch('/api/dashboard')
+      const response = await fetch(`${API_BASE_URL}/api/dashboard`)
       if (!response.ok) {
         throw new Error(`Failed to fetch dashboard data (HTTP ${response.status})`)
       }
